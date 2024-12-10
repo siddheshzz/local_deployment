@@ -1,0 +1,9 @@
+[package]
+name = "local_alloy_deployment"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy = { version = "0.8", features = ["full","node-bindings",] }
+eyre = "0.6.12"
+tokio = { version = "1.42.0", features = ["full"] }
