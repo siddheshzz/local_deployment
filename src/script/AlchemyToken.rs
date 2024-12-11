@@ -47,3 +47,52 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+
+
+#[cfg(test)]
+mod tests {
+
+    use eyre::Ok;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn can_launch_deploy_contract()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet();    
+        let contract = Counter::deploy(&provider).await?;
+        //verify if the contact address is generated and not empty
+        assert_eq!(contract.address().is_empty(),false );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_set_counter()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet();    
+        let contract = Counter::deploy(&provider).await?;
+        // Lets increment number by 1
+        contract.increment().send().await?.watch().await?;
+        let num = contract.number().call().await?;
+        // Verify if number is incred by 1
+        assert_eq!(1,num.number);
+        // Lets increment number one more time
+        contract.increment().send().await?.watch().await?;
+
+        // Verify if value is  incremented and number is set to 2
+        let num = contract.number().call().await?;
+        assert_eq!(2,num.number);
+        Ok(())
+        
+    }
+
+    #[tokio::test]
+    async fn can_set_number()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet();    
+        let contract = Counter::deploy(&provider).await?;
+        //verify if the value is set to new value on call of setNumber method.
+        contract.setNumber(U256::from(23)).send().await?.watch().await?;
+        assert_eq!(contract.number().call().await?.number,23);
+        
+        Ok(())
+    }
+}

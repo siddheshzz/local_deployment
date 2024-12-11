@@ -47,3 +47,116 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+
+    use alloy::providers::WalletProvider;
+    use eyre::Ok;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn can_only_owner_mint()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet(); 
+        
+        let contract = ERC20Example::deploy(&provider).await?;
+
+        // require!(contract.owner().call().await? == alice);
+        let accounts = provider.get_accounts().await?;
+        //the first account is the one which deploys the contract when we call ::deploy()- alice
+        let alice = accounts[0];
+        
+        let bob = accounts[1];
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+        let charlie = accounts[2];
+        contract.transfer(bob, U256::from(1000000)).send().await?.watch().await?;
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+        contract.allowance(alice, bob).call().await?._0;
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+        contract.increaseAllowance(bob,  U256::from(100)).send().await?.watch().await?;
+        println!("{:?}",contract.balanceOf(alice).call().await?._0);
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+
+        assert_eq!(contract.balanceOf(bob).call().await?._0, U256::from(1000000));
+        Ok(())
+    }
+    #[tokio::test]
+    async fn can_transfer()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet(); 
+        
+        let contract = ERC20Example::deploy(&provider).await?;
+
+        // require!(contract.owner().call().await? == alice);
+        let accounts = provider.get_accounts().await?;
+        //the first account is the one which deploys the contract when we call ::deploy()- alice
+        let alice = accounts[0];
+        
+        let bob = accounts[1];
+
+        let charlie = accounts[2];
+       
+        contract.transfer(bob, U256::from(100000)).from(alice).send().await?.watch().await?;
+
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+        assert_eq!(contract.balanceOf(bob).call().await?._0, U256::from(100000));
+        Ok(())
+    }
+    #[tokio::test]
+    async fn can_transfer_only_owner()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet(); 
+        
+        let contract = ERC20Example::deploy(&provider).await?;
+
+        // require!(contract.owner().call().await? == alice);
+        let accounts = provider.get_accounts().await?;
+        //the first account is the one which deploys the contract when we call ::deploy()- alice
+        let alice = accounts[0];
+        
+        let bob = accounts[1];
+
+        let charlie = accounts[2];
+        //.from lets you send the transaction from a specific account
+        contract.transfer(charlie, U256::from(1000)).from(alice).send().await?.watch().await?;
+        
+        // println!("{:?}",);
+        contract.transfer(bob, U256::from(10)).from(charlie).send().await?.watch().await?;
+        println!("{:?}",contract.balanceOf(bob).call().await?._0);
+        assert_ne!(contract.balanceOf(bob).call().await?._0, U256::from(0));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_transfer_from_non_owner_with_approve()-> Result<()> {
+        let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet(); 
+        
+        let contract = ERC20Example::deploy(&provider).await?;
+
+        // require!(contract.owner().call().await? == alice);
+        let accounts = provider.get_accounts().await?;
+        //the first account is the one which deploys the contract when we call ::deploy()- alice
+        let alice = accounts[0];
+        
+        let bob = accounts[1];
+
+        let charlie = accounts[2];
+        println!("{:?}",charlie);
+
+        // println!("totalSupply: {:?}", contract.approve(alice,  U256::from(100000)).call().await?._0);
+        // contract.approve(bob,  U256::from(100000)).send().await?.watch().await?;
+        // contract.allowance(alice, bob).call().await?._0;
+        // contract.approve(bob,  U256::from(100000)).call().await?._0;
+        // contract.increaseAllowance(bob,  U256::from(100)).send().await?.watch().await?;
+        contract.transfer(bob, U256::from(100)).call().await?._0;
+        // contract.transferFrom(bob, charlie, U256::from(10)).send().await?.watch().await?;s
+
+        println!("{:?}",contract.balanceOf(charlie).call().await?._0);
+
+
+        assert_eq!(contract.balanceOf(charlie).call().await?._0, U256::from(0));
+        Ok(())
+    }
+
+}
+
