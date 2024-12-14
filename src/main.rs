@@ -1,174 +1,238 @@
-//! Example of deploying a contract from Solidity code using the `sol!` macro to Anvil and
-//! interacting with it.
+use alloy::{
+      primitives::{  keccak256, Bytes}, providers::{Provider, ProviderBuilder},  signers::{k256::ecdsa::{signature::Verifier, Signature, SigningKey, VerifyingKey}, local::PrivateKeySigner, Signer}
+};
+use eyre::{Result};
+use serde::{Deserialize, Serialize};
 
-use alloy::{network::{EthereumWallet, NetworkWallet, TransactionBuilder}, node_bindings::Anvil, primitives::{address, bytes, U256, U8}, providers::{Provider, ProviderBuilder, WalletProvider}, rpc::types::{eth, TransactionRequest}, signers::{k256::ecdsa::SigningKey, local::PrivateKeySigner, Signer}, sol};
-use eyre::Result;
-use dotenv::dotenv;
-// use alloy::signers::local::{coins_bip39::English, MnemonicBuilder};
 
-// Codegen from embedded Solidity code and precompiled bytecode.
-sol! {
+sol!(
     #[allow(missing_docs)]
-    // #[sol(rpc, bytecode="608060405234801561000f575f80fd5b50335f806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506001600281905550610a9e806100645f395ff3fe608060405260043610610085575f3560e01c8063b61f346d11610058578063b61f346d14610167578063c1cfb99a14610171578063ccbac9f51461019b578063dfbf53ae146101c5578063e7e4552c146101db57610085565b80630544ce5e146100895780630f31b7d2146100c55780638da5cb5b14610101578063a2fb11751461012b575b5f80fd5b348015610094575f80fd5b506100af60048036038101906100aa91906106f2565b610205565b6040516100bc919061075c565b60405180910390f35b3480156100d0575f80fd5b506100eb60048036038101906100e691906106f2565b610240565b6040516100f8919061075c565b60405180910390f35b34801561010c575f80fd5b50610115610279565b6040516101229190610795565b60405180910390f35b348015610136575f80fd5b50610151600480360381019061014c91906106f2565b61029c565b60405161015e919061075c565b60405180910390f35b61016f6102cc565b005b34801561017c575f80fd5b50610185610341565b60405161019291906107bd565b60405180910390f35b3480156101a6575f80fd5b506101af610348565b6040516101bc91906107bd565b60405180910390f35b3480156101d0575f80fd5b506101d9610399565b005b3480156101e6575f80fd5b506101ef61058e565b6040516101fc919061088d565b60405180910390f35b60018181548110610214575f80fd5b905f5260205f20015f915054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b5f60035f8381526020019081526020015f205f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff169050919050565b5f8054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b6003602052805f5260405f205f915054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b67016345785d8a000034116102df575f80fd5b600133908060018154018082558091505060019003905f5260205f20015f9091909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550565b5f47905090565b5f805f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff164260405160200161037c929190610912565b604051602081830303815290604052805190602001205f1c905090565b5f8054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16146103ef575f80fd5b5f6001805490506103fe610348565b610408919061096a565b90506001818154811061041e5761041d61099a565b5b905f5260205f20015f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166108fc4790811502906040515f60405180830381858888f19350505050158015610488573d5f803e3d5ffd5b5060025f81548092919061049b906109f4565b9190505550600181815481106104b4576104b361099a565b5b905f5260205f20015f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1660035f60025481526020019081526020015f205f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505f67ffffffffffffffff81111561054657610545610a3b565b5b6040519080825280602002602001820160405280156105745781602001602082028036833780820191505090505b506001908051906020019061058a929190610619565b5050565b6060600180548060200260200160405190810160405280929190818152602001828054801561060f57602002820191905f5260205f20905b815f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190600101908083116105c6575b5050505050905090565b828054828255905f5260205f2090810192821561068f579160200282015b8281111561068e578251825f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555091602001919060010190610637565b5b50905061069c91906106a0565b5090565b5b808211156106b7575f815f9055506001016106a1565b5090565b5f80fd5b5f819050919050565b6106d1816106bf565b81146106db575f80fd5b50565b5f813590506106ec816106c8565b92915050565b5f60208284031215610707576107066106bb565b5b5f610714848285016106de565b91505092915050565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6107468261071d565b9050919050565b6107568161073c565b82525050565b5f60208201905061076f5f83018461074d565b92915050565b5f61077f8261071d565b9050919050565b61078f81610775565b82525050565b5f6020820190506107a85f830184610786565b92915050565b6107b7816106bf565b82525050565b5f6020820190506107d05f8301846107ae565b92915050565b5f81519050919050565b5f82825260208201905092915050565b5f819050602082019050919050565b6108088161073c565b82525050565b5f61081983836107ff565b60208301905092915050565b5f602082019050919050565b5f61083b826107d6565b61084581856107e0565b9350610850836107f0565b805f5b83811015610880578151610867888261080e565b975061087283610825565b925050600181019050610853565b5085935050505092915050565b5f6020820190508181035f8301526108a58184610831565b905092915050565b5f8160601b9050919050565b5f6108c3826108ad565b9050919050565b5f6108d4826108b9565b9050919050565b6108ec6108e782610775565b6108ca565b82525050565b5f819050919050565b61090c610907826106bf565b6108f2565b82525050565b5f61091d82856108db565b60148201915061092d82846108fb565b6020820191508190509392505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601260045260245ffd5b5f610974826106bf565b915061097f836106bf565b92508261098f5761098e61093d565b5b828206905092915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffd5b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f6109fe826106bf565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8203610a3057610a2f6109c7565b5b600182019050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffdfea2646970667358221220535f3fc6a1d8176244a9eb6a6f9df35f5895b2af939995563b425120e028187a64736f6c63430008140033")]
-    #[sol(rpc)]
-    Lottery,
-    "./contracts/Lottery.json"
+    #[sol(rpc,bytecode="608060405234801561000f575f80fd5b50604051610e6f380380610e6f833981810160405281019061003191906102a6565b60185f60146101000a81548163ffffffff021916908363ffffffff1602179055505f5b81518110156100e4576001828281518110610072576100716102ed565b5b6020026020010151908060018154018082558091505060019003905f5260205f20015f9091909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055508080600101915050610054565b505061031a565b5f604051905090565b5f80fd5b5f80fd5b5f80fd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b61014682610100565b810181811067ffffffffffffffff8211171561016557610164610110565b5b80604052505050565b5f6101776100eb565b9050610183828261013d565b919050565b5f67ffffffffffffffff8211156101a2576101a1610110565b5b602082029050602081019050919050565b5f80fd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6101e0826101b7565b9050919050565b6101f0816101d6565b81146101fa575f80fd5b50565b5f8151905061020b816101e7565b92915050565b5f61022361021e84610188565b61016e565b90508083825260208201905060208402830185811115610246576102456101b3565b5b835b8181101561026f578061025b88826101fd565b845260208401935050602081019050610248565b5050509392505050565b5f82601f83011261028d5761028c6100fc565b5b815161029d848260208601610211565b91505092915050565b5f602082840312156102bb576102ba6100f4565b5b5f82015167ffffffffffffffff8111156102d8576102d76100f8565b5b6102e484828501610279565b91505092915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffd5b610b48806103275f395ff3fe608060405234801561000f575f80fd5b5060043610610060575f3560e01c8063238ac9331461006457806342f2bdbe1461008257806348808c10146100b2578063cdd72253146100ce578063da58c7d9146100ec578063f1d876b41461011c575b5f80fd5b61006c61013a565b604051610079919061053a565b60405180910390f35b61009c60048036038101906100979190610597565b61015d565b6040516100a991906105dd565b60405180910390f35b6100cc60048036038101906100c791906107d0565b61017a565b005b6100d66102ae565b6040516100e391906108fd565b60405180910390f35b61010660048036038101906101019190610950565b610339565b604051610113919061053a565b60405180910390f35b610124610374565b6040516101319190610999565b60405180910390f35b5f8054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b6002602052805f5260405f205f915054906101000a900460ff1681565b5f8260405160200161018c9190610a12565b6040516020818303038152906040528051906020012090506101ae8183610389565b5f806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505f6102155f8054906101000a900473ffffffffffffffffffffffffffffffffffffffff166103f9565b9050600115158115150361027657600160025f8481526020019081526020015f205f9054906101000a900460ff1661024d9190610a5f565b60025f8481526020019081526020015f205f6101000a81548160ff021916908360ff1602179055505b6002805f8481526020019081526020015f205f9054906101000a900460ff1660ff16106102a8576102a7600261049b565b5b50505050565b6060600180548060200260200160405190810160405280929190818152602001828054801561032f57602002820191905f5260205f20905b815f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190600101908083116102e6575b5050505050905090565b60018181548110610348575f80fd5b905f5260205f20015f915054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b5f60149054906101000a900463ffffffff1681565b5f805f80610396856104be565b8093508194508295505050506001868484846040515f81526020016040526040516103c49493929190610aa2565b6020604051602081039080840390855afa1580156103e4573d5f803e3d5ffd5b50505060206040510351935050505092915050565b5f805f90505b60018054905081101561049157600181815481106104205761041f610ae5565b5b905f5260205f20015f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff1603610484576001915050610496565b80806001019150506103ff565b505f90505b919050565b805f60146101000a81548163ffffffff021916908363ffffffff16021790555050565b5f805f60418451146104ce575f80fd5b5f805f602087015192506040870151915060608701515f1a90508083839550955095505050509193909250565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f610524826104fb565b9050919050565b6105348161051a565b82525050565b5f60208201905061054d5f83018461052b565b92915050565b5f604051905090565b5f80fd5b5f80fd5b5f819050919050565b61057681610564565b8114610580575f80fd5b50565b5f813590506105918161056d565b92915050565b5f602082840312156105ac576105ab61055c565b5b5f6105b984828501610583565b91505092915050565b5f60ff82169050919050565b6105d7816105c2565b82525050565b5f6020820190506105f05f8301846105ce565b92915050565b5f80fd5b5f80fd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b610644826105fe565b810181811067ffffffffffffffff821117156106635761066261060e565b5b80604052505050565b5f610675610553565b9050610681828261063b565b919050565b5f67ffffffffffffffff8211156106a05761069f61060e565b5b6106a9826105fe565b9050602081019050919050565b828183375f83830152505050565b5f6106d66106d184610686565b61066c565b9050828152602081018484840111156106f2576106f16105fa565b5b6106fd8482856106b6565b509392505050565b5f82601f830112610719576107186105f6565b5b81356107298482602086016106c4565b91505092915050565b5f67ffffffffffffffff82111561074c5761074b61060e565b5b610755826105fe565b9050602081019050919050565b5f61077461076f84610732565b61066c565b9050828152602081018484840111156107905761078f6105fa565b5b61079b8482856106b6565b509392505050565b5f82601f8301126107b7576107b66105f6565b5b81356107c7848260208601610762565b91505092915050565b5f80604083850312156107e6576107e561055c565b5b5f83013567ffffffffffffffff81111561080357610802610560565b5b61080f85828601610705565b925050602083013567ffffffffffffffff8111156108305761082f610560565b5b61083c858286016107a3565b9150509250929050565b5f81519050919050565b5f82825260208201905092915050565b5f819050602082019050919050565b6108788161051a565b82525050565b5f610889838361086f565b60208301905092915050565b5f602082019050919050565b5f6108ab82610846565b6108b58185610850565b93506108c083610860565b805f5b838110156108f05781516108d7888261087e565b97506108e283610895565b9250506001810190506108c3565b5085935050505092915050565b5f6020820190508181035f83015261091581846108a1565b905092915050565b5f819050919050565b61092f8161091d565b8114610939575f80fd5b50565b5f8135905061094a81610926565b92915050565b5f602082840312156109655761096461055c565b5b5f6109728482850161093c565b91505092915050565b5f63ffffffff82169050919050565b6109938161097b565b82525050565b5f6020820190506109ac5f83018461098a565b92915050565b5f81519050919050565b5f82825260208201905092915050565b8281835e5f83830152505050565b5f6109e4826109b2565b6109ee81856109bc565b93506109fe8185602086016109cc565b610a07816105fe565b840191505092915050565b5f6020820190508181035f830152610a2a81846109da565b905092915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f610a69826105c2565b9150610a74836105c2565b9250828201905060ff811115610a8d57610a8c610a32565b5b92915050565b610a9c81610564565b82525050565b5f608082019050610ab55f830187610a93565b610ac260208301866105ce565b610acf6040830185610a93565b610adc6060830184610a93565b95945050505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffdfea2646970667358221220b62da59ca4bfea4050487b653c8b710caea38e45c3d912cf47b9f67f7842b50664736f6c634300081a0033")]
+    
+
+contract Voting {
+    using ECDSA for bytes32;
+
+    address public signer;
+    uint32 public Value;
+    address[] public voters;
+    mapping(bytes32 => uint8) public Praposals;
+    constructor(address[] memory v){
+        Value = 24;
+        for (uint i = 0; i < v.length; i++) {
+            voters.push(v[i]);
+        }
+    }
+
+    function getVoters() public view returns(address[] memory){
+        return voters;
+    }
+    
+    function _verify(address voter) internal view returns(bool){
+        for(uint i=0;i<voters.length;i++){
+            if (voter==voters[i]){
+                return true;
+            }
+        }
+        return false;
+    }
+    function splitSignature(bytes memory sig)
+        internal
+        pure
+        returns (uint8, bytes32, bytes32)
+    {
+        require(sig.length == 65);
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            // first 32 bytes, after the length prefix
+            r := mload(add(sig, 32))
+            // second 32 bytes
+            s := mload(add(sig, 64))
+            // final byte (first byte of the next 32 bytes)
+            v := byte(0, mload(add(sig, 96)))
+        }
+
+        return (v, r, s);
+    }
+
+    function recoverSigner(bytes32 message, bytes memory sig)
+        internal
+        pure
+        returns (address)
+    {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+
+        (v, r, s) = splitSignature(sig);
+
+        return ecrecover(message, v, r, s);
+    }
+
+    function check(string memory message1, bytes memory sig) public {
+        bytes32 message = keccak256(abi.encode(message1));
+        signer = recoverSigner(message, sig);
+
+        
+        bool isVoter = _verify(signer);
+        if(isVoter == true){
+            Praposals[message] = Praposals[message]+1; 
+        }
+        
+        if(Praposals[message]>=2){
+            _updateValue(2);
+        }
+    }
+    function _updateValue(uint32 num) internal{
+        Value = num;
+
+    }
+
 }
+);
+
+
+#[derive(Serialize, Deserialize)]
+struct Proposal{
+    value:u8,
+}
+
+
+impl Proposal { 
+
+    pub fn to_bytes (&self) -> Vec<u8> {
+        self.value.to_be_bytes().to_vec()
+    }
+
+}
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let rpc_url = "https://1rpc.io/sepolia".parse()?;
+    // let mut msg=b"ssssssssssssssssssssssssssssssss";
+    // let mut msg2 = b"44444444444444444444444444444444";
+
+    let msg="heelo please work";
+    let msg2 = "msg2";
+
+    let p = Proposal {
+        value:12
+    };
+    println!("{:?}", p.to_bytes());
+
+
+    let provider = ProviderBuilder::new().with_recommended_fillers().on_anvil_with_wallet();
+    let a = provider.get_accounts().await.unwrap();
     
-    // let signingKey = SigningKey::from_slice("0xD2343D1EB4F9A170D4600F028402849A7FE3Acc5".as_bytes()).unwrap();
-    // let signingKey = "0xD2343D1EB4F9A170D4600F028402849A7FE3Acc5".as_bytes();
-    // let signer = PrivateKeySigner::from_signing_key(signingKey);
-    // println!("Signer {:?}", signer.address());
-    // let signer = signer.with_chain_id(Some(11155111));
+    let mut addresses = Vec::new();
 
-    let signer: PrivateKeySigner = "fd8ceac1025b8f6a012894c86e0df8f4f3d939db7be46d5a74994e6c8a7421e7".parse().expect("should parse private key");
-    let wallet = EthereumWallet::from(signer.clone());
-
-    println!("wallet address: {:?}", wallet);
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http( rpc_url);
-    let latest_block = provider.get_block_number().await?;
-
-    println!("Latest block number: {latest_block}");
+    //Generates private key
     
+    let signing_key = SigningKey::from_slice(&[1u8;32]).unwrap();
+    addresses.push(signing_key);
+
+    let signing_key1 = SigningKey::from_slice(&[2u8;32]).unwrap();
+    addresses.push(signing_key1);
+
+    let signing_key2 = SigningKey::from_slice(&[3u8;32]).unwrap();
+    addresses.push(signing_key2);
 
 
-    let lottery = Lottery::new(address!("8ae59e4601842d14aea8c26221f80a263ce65573"),&provider);
+    // let signer = PrivateKeySigner::from_slice(&[1 as u8;32]).unwrap();
 
-    let call_builder = lottery.owner();
-
-    let call_return = call_builder.call().await?;
-    println!("Owner address {:?}",call_return._0);
-
-    println!("Balance: {}", lottery.get_balance().call().await?._0);
-
-    println!("Players: {:?}", lottery.get_players().call().await?._0);
-
-
-
-
-    
-
-
-
-
-
-
-    // send transaction using 1. contract instance
-                            //   2. transaction builder/request
-    // let lottery = Lottery::new(alice,&provider);
-
-    // // u8 not accepting cant think of any reason yet
-
-    // let tx = TransactionRequest::default()
-    //                                                 .with_from(bob)
-    //                                                 .with_nonce(0)
-    //                                                 .with_chain_id(1)
-    //                                                 .with_value(U256::from(0.000002))
-    //                                                 .with_gas_limit(21_000)
-    //                                                 .with_max_priority_fee_per_gas(1_000_000_000)
-    //                                                 .with_max_fee_per_gas(20_000_000_000);
-
-    
-    // // // .with_to(bob).with_value(U256::from(100));
-
-    // // // Send the transaction and wait for inclusion with 3 confirmations.
-    // let tx_hash =
-    //     provider.send_transaction(tx).await?.with_required_confirmations(3).watch().await?;
-
-    // println!("Sent transaction: {tx_hash}");
-
-
-
-
-
-
-
-    // let signingKey = SigningKey::from_slice(&[2u8;32]).unwrap();
-    // let bob = PrivateKeySigner::from_signing_key(signingKey);
-    // let signer = bob.clone().with_chain_id(Some(11155111));
-    // let bobWallet = EthereumWallet::from(signer);
-
-    // let signingKey = SigningKey::from_slice(&[3u8;32]).unwrap();
-    // let charlie = PrivateKeySigner::from_signing_key(signingKey);
-    // let signer = charlie.clone().with_chain_id(Some(11155111));
-    // let charlieWallet = EthereumWallet::from(signer);
-
-    // println!("Add Bob to lottery {}", lottery.addLottery().from(bob.address()).value(U256::from(0.000002)).send().await?.watch().await?);
-    // println!("Add Charlie to lottery {}", lottery.addLottery().from(charlie.address()).value(U256::from(0.000002)).send().await?.watch().await?);
-
-    
-    
-    
-    // let tx = TransactionRequest::default()
-    //     .with_nonce(0)
-    //     .with_chain_id(provider.get_chain_id().await?)
-    //     .with_value(U256::from(100))
-    //     .with_gas_limit(21_000)
-    //     .with_max_priority_fee_per_gas(1_000_000_000)
-    //     .with_max_fee_per_gas(20_000_000_000);
-
-    // // Send the transaction and wait for the broadcast.
-    // let pending_tx = provider.send_transaction(tx).await?;
-
-    // println!("Pending transaction... {}", pending_tx.tx_hash());
-
+    // let signer2 = PrivateKeySigner::from_slice(&[2 as u8;32]).unwrap();
+    // addresses.push(signer2.address());
+    // let signer3 = PrivateKeySigner::from_slice(&[3 as u8;32]).unwrap();
+    // addresses.push(signer3.address());
     
     
 
 
+    let contract = Voting::deploy(&provider,addresses).await.unwrap();
+    // println!("Votersaddress: {:?}", contract.getVoters().call().await.unwrap()._0);
+    // println!("Old value{:?}",contract.Value().call().await.unwrap().Value);
 
+    //generates signature which is of 65 bytes = r,s,v
+    //r = part coming from signing process
+    //s = part coming from private key of signer(off couse not the key but derived from private key)
+    //v = recovery pattern
+    //It specifies which of the two possible elliptic curve points (r, s) corresponds to the correct signature.
+    //The value of v is usually either 27 or 28 in Ethereum (for ECDSA), though other values might be used
+    // in different contexts (e.g., 0 or 1 for other systems).
+    // The v value is necessary to recover the public key from the signature.
+    // In Ethereum, this value helps determine which of the two possible public keys produced by the
+    // elliptic curve signature process should be used to verify the signature.
 
 
     
+    let signature = signer.sign_hash(&keccak256(msg)).await.unwrap();
+    let signature2 = signer2.sign_hash(&keccak256(msg)).await.unwrap();
+    let signature3 = signer3.sign_hash(&keccak256(msg2)).await.unwrap();
+
+
+    // let signing_key = SigningKey::(signer).unwrap();
+    // let verifying_key = VerifyingKey::from(&signing_key);
+    // verification 
+    let verifying_key = VerifyingKey::from(signer.credential());
     
+    println!("sIGNATURE: {:?} ",signature.with_parity(false));
+    let signature = signature.with_parity(false);
+
+    // println!("Verifying key: {:?}", verifying_key);
+
+    //error is to do with impl trait -> verify needs 2# as something whichvis of type S i.e type which impl 
+    // println!("Verifying :{:?}",verifying_key.verify(&msg.as_bytes(), &signature.to_k256().unwrap()));  
+
+
+    match verifying_key.verify(&msg.as_bytes(), &signature.to_k256().unwrap()){
+        Ok(_) => println!("Signature is valid"),
+        Err(e) => println!("Signature is invalid: {}", e),
+    }
+
+
     
+    // contract.check(msg.to_string(),Bytes::from(signature.as_bytes())).call().await.unwrap();
+    // println!("Signature: {:?}",signature);
+    // println!("Signature as bytes: {:?}",Bytes::from(signature2.as_bytes()));
+    // println!("Signer address decrypted is :{:?}",contract.signer().call().await.unwrap().signer);
+
+    contract.check(msg.to_string(),Bytes::from(signature2.as_bytes())).call().await.unwrap();
+    // println!("Signer address decrypted is :{:?}",contract.signer().call().await.unwrap().signer);
+
+    // contract.check(msg2.to_string(),Bytes::from(signature3.as_bytes())).call().await.unwrap();
+    // println!("Signer address decrypted is :{:?}",contract.signer().call().await.unwrap().signer);
+
+    // println!("New value{:?}",contract.Value().call().await?.Value);
+
+    //NOTES:- todo()!
+    // //hard - deserialize the sent message like create struct in solidity contract
     
-    
-    // let gas = lottery.addLottery().estimate_gas().await?;
-    let builder = lottery.addLottery().value(U256::from(20000));
-    // println!("Estimated gas: {gas}");
-    let tx_hash = builder.send().await?.watch().await?;
+    // encode -bytes
+    // decode-Struct 
 
 
-    println!("Players: {:?}", lottery.get_players().call().await?._0);
-    // println!("Added me to lottery: {:?}", tx_hash);
+    // contract -multiple people can vote
 
-    // Increment the number to 43.
-    // let builder = lottery.addLottery().from(bob).value(U256::from(43));
-    // let tx_hash = builder.send().await?.watch().await?;
+    // struct serialize and deserialize
 
-    //according to forums this happend due to incorect way of deserialization
 
-    // println!("Incremented number: {tx_hash}");
-    // let players = lottery.get_players().call().await;
-    // match players {
-    //     Ok(players) => {
-           
-    //     },
-    //     Err(e) => {
-    //         println!("Error: {}", e);
-    //     }
-        
-    // // }
-    // let players = lottery.get_players().call().await?;
 
-    // println!("Players: {}",players._0.len());
-    // for i in players{
-    //     println!("Player: {}", i);
+    // participants - 10
+
+    // struct feeeup{
+    // u32
     // }
-    // println!("Contract balance: {:?}", lottery.get_players().gas( 25000).call().await?._0);
 
+    // 10 wallet 1 praposal sign and submit
+    // praposal - 
+    // fee 
+    // praposalfor fee Update
+    // who and howmuch
 
-    // Retrieve the number, which should be 43.
-    // let builder = lottery.winner().from(alice);
-    // let number = builder.call().await?;
-    // let win = lottery.get_winners(U256::from(1)).call().await?._0;
-    // println!("Retrieved winner address: {:?}",win );
-    
 
     Ok(())
 }

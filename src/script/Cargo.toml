@@ -1,0 +1,14 @@
+# [package]
+# name = "script"
+# authors.workspace = true
+# description.workspace = true
+# documentation.workspace = true
+
+# [dependencies]
+# alloy = { workspace = true, features = ["full","node-bindings",] }
+# dotenv.workspace = true
+# eyre.workspace = true
+# tokio = { workspace = true, features = ["full"] }
+
+# # serde = { workspace = true, features = ["derive"] }
+# serde_json.workspace = true
